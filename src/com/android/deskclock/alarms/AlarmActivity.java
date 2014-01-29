@@ -124,70 +124,6 @@ public class AlarmActivity extends Activity {
         }
     }
 
-    private final SensorEventListener mFlipListener = new SensorEventListener() {
-        private static final int FACE_UP_LOWER_LIMIT = -45;
-        private static final int FACE_UP_UPPER_LIMIT = 45;
-        private static final int FACE_DOWN_UPPER_LIMIT = 135;
-        private static final int FACE_DOWN_LOWER_LIMIT = -135;
-        private static final int TILT_UPPER_LIMIT = 45;
-        private static final int TILT_LOWER_LIMIT = -45;
-        private static final int SENSOR_SAMPLES = 3;
-
-        private boolean mWasFaceUp;
-        private boolean[] mSamples = new boolean[SENSOR_SAMPLES];
-        private int mSampleIndex;
-
-        @Override
-        public void onAccuracyChanged(Sensor sensor, int acc) {
-        }
-
-        @Override
-        public void onSensorChanged(SensorEvent event) {
-            // Add a sample overwriting the oldest one. Several samples
-            // are used
-            // to avoid the erroneous values the sensor sometimes
-            // returns.
-            float y = event.values[1];
-            float z = event.values[2];
-
-            if (!mWasFaceUp) {
-                // Check if its face up enough.
-                mSamples[mSampleIndex] = y > FACE_UP_LOWER_LIMIT
-                        && y < FACE_UP_UPPER_LIMIT
-                        && z > TILT_LOWER_LIMIT && z < TILT_UPPER_LIMIT;
-
-                // The device first needs to be face up.
-                boolean faceUp = true;
-                for (boolean sample : mSamples) {
-                    faceUp = faceUp && sample;
-                }
-                if (faceUp) {
-                    mWasFaceUp = true;
-                    for (int i = 0; i < SENSOR_SAMPLES; i++) {
-                        mSamples[i] = false;
-                    }
-                }
-            } else {
-                // Check if its face down enough. Note that wanted
-                // values go from FACE_DOWN_UPPER_LIMIT to 180
-                // and from -180 to FACE_DOWN_LOWER_LIMIT
-                mSamples[mSampleIndex] = (y > FACE_DOWN_UPPER_LIMIT || y < FACE_DOWN_LOWER_LIMIT)
-                        && z > TILT_LOWER_LIMIT
-                        && z < TILT_UPPER_LIMIT;
-
-                boolean faceDown = true;
-                for (boolean sample : mSamples) {
-                    faceDown = faceDown && sample;
-                }
-                if (faceDown) {
-                    handleAction(mFlipAction);
-                }
-            }
-
-            mSampleIndex = ((mSampleIndex + 1) % SENSOR_SAMPLES);
-        }
-    };
-
     private final SensorEventListener mShakeListener = new SensorEventListener() {
         private static final float SENSITIVITY = 16;
         private static final int BUFFER = 5;
@@ -226,6 +162,7 @@ public class AlarmActivity extends Activity {
     private AlarmInstance mInstance;
     private SensorManager mSensorManager;
     private int mFlipAction;
+    private FlipSensorListener mFlipListener;
     private int mShakeAction;
     private int mVolumeBehavior;
     private GlowPadView mGlowPadView;
@@ -302,6 +239,13 @@ public class AlarmActivity extends Activity {
         filter.addAction(ALARM_SNOOZE_ACTION);
         filter.addAction(ALARM_DISMISS_ACTION);
         registerReceiver(mReceiver, filter);
+
+        mFlipListener = new FlipSensorListener(new Runnable(){
+            @Override
+            public void run() {
+                handleAction(mFlipAction);
+            }
+        });
 
         final SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
         mFlipAction = Integer.parseInt(prefs.getString(
@@ -404,10 +348,10 @@ public class AlarmActivity extends Activity {
 
     private void attachListeners() {
         if (mFlipAction != ALARM_NO_ACTION) {
+            mFlipListener.reset();
             mSensorManager.registerListener(mFlipListener,
-                    mSensorManager.getDefaultSensor(Sensor.TYPE_ORIENTATION),
-                    SensorManager.SENSOR_DELAY_NORMAL,
-                    300 * 1000); //batch every 300 milliseconds
+                    mSensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER),
+                    SensorManager.SENSOR_DELAY_NORMAL);
         }
 
         if (mShakeAction != ALARM_NO_ACTION) {
